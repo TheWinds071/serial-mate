@@ -6,6 +6,8 @@
 
 > **当前状态**: 开发中 / v1.0.0
 
+![pict.png](pict.png)
+
 ## ✨ 主要功能 (Features)
 
 ### 🎨 极致 UI/UX 体验
