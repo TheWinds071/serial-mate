@@ -82,8 +82,17 @@ onMounted(async () => {
   });
 
   EventsOn("serial-error", (err) => {
-    alert("Serial Error: " + err);
+    // 1. 彻底删除 alert
+    // alert("Serial Error: " + err);
+
+    // 2. 改为在控制台记录，或者更新界面上的状态栏文字
+    console.error("Serial port error:", err);
+
+    // 3. 自动断开前端状态
     isConnected.value = false;
+
+    // (可选) 如果你想优雅提示，可以加一个 Toast，或者只是把错误显示在状态栏里
+    // 比如： statusMessage.value = "异常断开: " + err;
   });
 });
 

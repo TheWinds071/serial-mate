@@ -53,31 +53,31 @@ func (a *App) OpenSerial(portName string, baudRate int, dataBits int, stopBits i
 	// 1. 映射校验位
 	var parity serial.Parity
 	switch parityName {
-		case "None":
-			parity = serial.NoParity
-		case "Odd":
-			parity = serial.OddParity
-		case "Even":
-			parity = serial.EvenParity
-		case "Mark":
-			parity = serial.MarkParity
-		case "Space":
-			parity = serial.SpaceParity
-		default:
-			parity = serial.NoParity
+	case "None":
+		parity = serial.NoParity
+	case "Odd":
+		parity = serial.OddParity
+	case "Even":
+		parity = serial.EvenParity
+	case "Mark":
+		parity = serial.MarkParity
+	case "Space":
+		parity = serial.SpaceParity
+	default:
+		parity = serial.NoParity
 	}
 
 	// 2. 映射停止位 (前端传 1, 15(代表1.5), 2)
 	var stop serial.StopBits
 	switch stopBits {
-		case 1:
-			stop = serial.OneStopBit
-		case 15:
-			stop = serial.OnePointFiveStopBits
-		case 2:
-			stop = serial.TwoStopBits
-		default:
-			stop = serial.OneStopBit
+	case 1:
+		stop = serial.OneStopBit
+	case 15:
+		stop = serial.OnePointFiveStopBits
+	case 2:
+		stop = serial.TwoStopBits
+	default:
+		stop = serial.OneStopBit
 	}
 
 	// 3. 配置 Mode
@@ -104,27 +104,26 @@ func (a *App) OpenSerial(portName string, baudRate int, dataBits int, stopBits i
 
 // 3. 读取循环 (将数据推送给前端)
 func (a *App) readLoop() {
-	buff := make([]byte, 100)
+	buff := make([]byte, 128) // 稍微加大一点缓冲
 	for {
 		select {
-			case <-a.readStopChan:
+		case <-a.readStopChan:
+			return
+		default:
+			n, err := a.port.Read(buff)
+			if err != nil {
+				// 关键修改：只有当连接状态显示为 true 时，才认为是异常错误
+				// 如果 isConnected 已经是 false，说明是我们主动调用的 CloseSerial，直接退出即可
+				if a.isConnected {
+					runtime.EventsEmit(a.ctx, "serial-error", err.Error())
+					a.CloseSerial() // 触发清理逻辑
+				}
 				return
-			default:
-				n, err := a.port.Read(buff)
-				if err != nil {
-					// 处理错误或断开连接
-					if a.isConnected {
-						runtime.EventsEmit(a.ctx, "serial-error", err.Error())
-						a.CloseSerial()
-					}
-					return
-				}
-				if n == 0 {
-					continue
-				}
-				// 发送原始字节数据到前端 (前端处理 Hex/ASCII 显示)
-				// 注意：为了传输方便，这里转为 byte slice
-				runtime.EventsEmit(a.ctx, "serial-data", buff[:n])
+			}
+			if n == 0 {
+				continue
+			}
+			runtime.EventsEmit(a.ctx, "serial-data", buff[:n])
 		}
 	}
 }
@@ -138,15 +137,18 @@ func (a *App) CloseSerial() string {
 		return "Port not open"
 	}
 
-	close(a.readStopChan) // 停止读取协程
-	err := a.port.Close()
+	// 关键修改：先修改状态，再关闭物理资源
+	// 这样 readLoop 里的 err != nil 发生时，会看到 isConnected 已经是 false 了，就不会报错
 	a.isConnected = false
+
+	close(a.readStopChan)
+	err := a.port.Close()
 	a.port = nil
 
 	if err != nil {
 		return fmt.Sprintf("Error closing: %v", err)
 	}
-	return "Closed"
+	return "Success"
 }
 
 // 5. 发送数据
