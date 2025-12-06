@@ -34,6 +34,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: '0'
 
       - name: Setup Go
         uses: actions/setup-go@v5
@@ -89,16 +91,30 @@ jobs:
       - name: Build Changelog
         id: build_changelog
         if: startsWith(github.ref, 'refs/tags/')
-        uses: mikepenz/release-changelog-builder-action@v4
+        uses: mikepenz/release-changelog-builder-action@v5
         with:
           configuration: |
             {
-              "categories": [
-                {"title": "## 🚀 Features", "labels": ["feat", "feature"]},
-                {"title": "## 🐛 Fixes", "labels": ["fix", "bug"]},
-                {"title": "## 📦 Dependencies", "labels": ["dependencies"]}
-              ],
-              "template": "#{{CHANGELOG}}"
+                "template": "#{{CHANGELOG}}",
+                "categories": [
+                  {
+                    "title": "## 🚀 新功能 (Features)",
+                    "labels": ["feature", "feat", "enhancement"]
+                  },
+                  {
+                    "title": "## 🐛 Bug 修复 (Fixes)",
+                    "labels": ["fix", "bug"]
+                  },
+                  {
+                    "title": "## 🛠 优化与维护 (Maintenance)",
+                    "labels": ["chore", "refactor", "docs", "documentation"]
+                  },
+                  {
+                    "title": "## 📦 依赖更新 (Dependencies)",
+                    "labels": ["dependencies"]
+                  }
+                ],
+                "ignore_unknown": false
             }
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
