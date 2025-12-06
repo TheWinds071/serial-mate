@@ -30,10 +30,9 @@ const udpLocalPort = ref('8081');
 const receivedData = ref<string>('');
 const rawDataBuffer = ref<number[]>([]);
 const sendInput = ref('');
-// 修改 1: 默认关闭 Hex 显示
+// 默认关闭 Hex 显示
 const showHex = ref(false);
-
-// 修改 2: 添加 Hex 发送状态
+// Hex 发送状态
 const hexSend = ref(false);
 
 // 行尾符配置
@@ -60,16 +59,36 @@ const logWindowRef = ref<HTMLElement | null>(null);
 const rxCount = ref(0);
 const txCount = ref(0);
 
-// --- 3. 主题 (简化) ---
+// --- 3. UI 状态 (主题 & 弹窗) ---
 const showThemePanel = ref(false);
 const defaultTheme = {
-  bgMain: '#F2F1ED', bgSide: '#EBEAE6', primary: '#7A8B99', textMain: '#5C5C5C', textSub: '#888888',
+  bgMain: '#F2F1ED', bgSide: '#EBEAE6', primary: '#7A8B99', textMain: '#5C5C5C', textSub: '#888888', error: '#CF6679'
 };
 const theme = reactive({ ...defaultTheme });
 const cssVars = computed(() => ({
-  '--bg-main': theme.bgMain, '--bg-side': theme.bgSide, '--col-primary': theme.primary, '--text-main': theme.textMain, '--text-sub': theme.textSub,
+  '--bg-main': theme.bgMain, '--bg-side': theme.bgSide, '--col-primary': theme.primary,
+  '--text-main': theme.textMain, '--text-sub': theme.textSub, '--col-error': theme.error
 }));
 const resetTheme = () => Object.assign(theme, defaultTheme);
+
+// 自定义弹窗状态
+const modal = reactive({
+  show: false,
+  title: '',
+  message: '',
+  type: 'error' as 'error' | 'info' | 'success'
+});
+
+const showModal = (title: string, message: string, type: 'error' | 'info' | 'success' = 'error') => {
+  modal.title = title;
+  modal.message = message;
+  modal.type = type;
+  modal.show = true;
+};
+
+const closeModal = () => {
+  modal.show = false;
+};
 
 // --- 4. 生命周期 ---
 onMounted(async () => {
@@ -78,8 +97,6 @@ onMounted(async () => {
   // 数据接收监听
   EventsOn("serial-data", (data: any) => {
     let bytes: number[] = [];
-
-    // Wails 的 []byte 传递过来通常是 Base64 字符串
     if (typeof data === 'string') {
       try {
         bytes = base64ToBytes(data);
@@ -93,7 +110,6 @@ onMounted(async () => {
 
     if (bytes && bytes.length > 0) {
       console.log(`RX: ${bytes.length} bytes`, bytes);
-
       rawDataBuffer.value.push(...bytes);
       rxCount.value += bytes.length;
       receivedData.value += formatData(bytes, showHex.value);
@@ -104,7 +120,8 @@ onMounted(async () => {
   EventsOn("serial-error", (err) => {
     console.error("Connection error:", err);
     isConnected.value = false;
-    alert("连接已断开: " + err);
+    // 替换 alert -> showModal
+    showModal("连接断开", String(err), 'error');
   });
 
   EventsOn("sys-msg", (msg) => {
@@ -127,14 +144,10 @@ const refreshPorts = async () => {
   } catch (e) { console.error(e); }
 };
 
-// 安全切换模式
 const switchMode = (targetMode: typeof mode.value) => {
   if (isConnected.value) {
-    // 如果已连接，触发震动动画
     isShaking.value = true;
-    setTimeout(() => {
-      isShaking.value = false;
-    }, 500); // 动画持续时间
+    setTimeout(() => { isShaking.value = false; }, 500);
     return;
   }
   mode.value = targetMode;
@@ -163,7 +176,8 @@ const toggleConnection = async () => {
     if (res === "Success") {
       isConnected.value = true;
     } else {
-      alert("连接失败: " + res);
+      // 替换 alert -> showModal
+      showModal("连接失败", res, 'error');
     }
   }
 };
@@ -173,29 +187,21 @@ const handleSend = async () => {
 
   let dataToSend = "";
 
-  // 修改 2: Hex 发送逻辑
   if (hexSend.value) {
-    // 1. 移除所有空白字符 (空格、换行等)
     const cleanInput = sendInput.value.replace(/\s+/g, '');
-
-    // 2. 校验是否为合法 Hex 字符串
     if (!/^[0-9A-Fa-f]*$/.test(cleanInput)) {
-      alert("Hex 格式错误: 包含非法字符");
+      showModal("格式错误", "Hex 字符串包含非法字符 (0-9, A-F)", 'error');
       return;
     }
     if (cleanInput.length % 2 !== 0) {
-      alert("Hex 格式错误: 长度必须为偶数 (例如: AA BB)");
+      showModal("格式错误", "Hex 字符串长度必须为偶数 (例如: AA BB)", 'error');
       return;
     }
-
-    // 3. 转换为原始字节字符串 (Go 后端会将 string 转为 []byte)
     for (let i = 0; i < cleanInput.length; i += 2) {
       const hexPair = cleanInput.substring(i, i + 2);
-      const byteVal = parseInt(hexPair, 16);
-      dataToSend += String.fromCharCode(byteVal);
+      dataToSend += String.fromCharCode(parseInt(hexPair, 16));
     }
   } else {
-    // 普通文本发送逻辑
     dataToSend = sendInput.value;
     if (lineEndingMode.value === 'LF') {
       dataToSend += "\n";
@@ -207,11 +213,9 @@ const handleSend = async () => {
   const res = await SendData(dataToSend);
 
   if(res === 'Sent') {
-    // 统计发送字节数 (如果是 Hex 发送，按解析后的字节数统计；文本按字符长度简单统计)
-    // 注意：JS string.length 对于多字节字符可能不准确，严谨应该用 TextEncoder，这里简单处理
     txCount.value += dataToSend.length;
   } else {
-    alert("发送失败: " + res);
+    showModal("发送失败", res, 'error');
   }
 };
 
@@ -343,7 +347,6 @@ const scrollToBottom = () => {
             <span class="text-xs font-bold text-[var(--text-sub)] tracking-wider">TX EDITOR</span>
 
             <div class="flex items-center gap-3">
-              <!-- Hex Send Checkbox -->
               <label class="flex items-center space-x-1.5 cursor-pointer hover:text-[var(--col-primary)] transition-colors select-none">
                 <input type="checkbox" v-model="hexSend" class="accent-[var(--col-primary)] w-3.5 h-3.5 rounded-sm">
                 <span class="text-[11px] font-bold opacity-70">Hex Send</span>
@@ -351,7 +354,6 @@ const scrollToBottom = () => {
 
               <div class="w-[1px] h-3 bg-black/10"></div>
 
-              <!-- EOL 控件 -->
               <div class="relative z-10" :class="{'opacity-50 pointer-events-none': hexSend}" title="Hex Send 模式下禁用">
                 <button
                     @click="showEolDropdown = !showEolDropdown"
@@ -398,6 +400,48 @@ const scrollToBottom = () => {
         </div>
       </div>
     </div>
+
+    <!-- 自定义弹窗 (Modal) -->
+    <Transition name="modal-fade">
+      <div v-if="modal.show" class="fixed inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-[2px] transition-all">
+        <!-- 弹窗内容 -->
+        <div class="bg-white/95 rounded-xl shadow-2xl border border-white/50 w-[420px] max-w-[90%] overflow-hidden transform transition-all scale-100 flex flex-col"
+             @click.stop>
+
+          <!-- 标题栏 -->
+          <div class="h-10 flex items-center justify-between px-4 bg-black/[0.03] border-b border-black/5">
+            <div class="flex items-center gap-2">
+              <!-- Error Icon -->
+              <svg v-if="modal.type === 'error'" class="w-4 h-4 text-[var(--col-error)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+              <!-- Info/Success Icon -->
+              <svg v-else class="w-4 h-4 text-[var(--col-primary)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+
+              <span class="text-xs font-bold tracking-wide" :class="modal.type === 'error' ? 'text-[var(--col-error)]' : 'text-[var(--col-primary)]'">
+                {{ modal.title }}
+              </span>
+            </div>
+            <button @click="closeModal" class="text-[var(--text-sub)] hover:text-[var(--text-main)] transition-colors">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+            </button>
+          </div>
+
+          <!-- 内容区域 -->
+          <div class="p-5">
+            <p class="text-sm text-[var(--text-main)] leading-relaxed font-medium mb-1 opacity-90 break-words font-mono bg-black/5 p-3 rounded-lg border border-black/5 text-[11px] max-h-40 overflow-y-auto custom-scrollbar">
+              {{ modal.message }}
+            </p>
+          </div>
+
+          <!-- 底部按钮 -->
+          <div class="px-5 pb-5 flex justify-end">
+            <button @click="closeModal" class="bg-[var(--col-primary)] text-white text-xs font-bold px-6 py-2 rounded-lg hover:opacity-90 active:scale-95 transition-all shadow-sm">
+              确 定
+            </button>
+          </div>
+        </div>
+      </div>
+    </Transition>
+
   </div>
 </template>
 
@@ -432,6 +476,21 @@ const scrollToBottom = () => {
 .slide-fade-enter-from,
 .slide-fade-leave-to {
   transform: translateY(-5px);
+  opacity: 0;
+}
+
+/* Modal Animation */
+.modal-fade-enter-active,
+.modal-fade-leave-active {
+  transition: all 0.2s ease-out;
+}
+.modal-fade-enter-from,
+.modal-fade-leave-to {
+  opacity: 0;
+}
+.modal-fade-enter-from .bg-white\/95,
+.modal-fade-leave-to .bg-white\/95 {
+  transform: scale(0.95);
   opacity: 0;
 }
 
