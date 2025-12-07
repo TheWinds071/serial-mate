@@ -263,10 +263,19 @@ const handleSend = async () => {
   }
 };
 
+// 清空接收数据时的动画状态
+const isBroomClicked = ref(false);
+
 const clearReceive = () => {
   receivedData.value = '';
   rawDataBuffer.value = [];
   rxCount.value = 0;
+  
+  // 触发清扫动画
+  isBroomClicked.value = true;
+  setTimeout(() => {
+    isBroomClicked.value = false;
+  }, 600);
 };
 
 const decoder = new TextDecoder('utf-8');
@@ -447,7 +456,7 @@ const scrollToBottom = () => {
             <span class="text-[10px] text-[var(--text-sub)] bg-black/5 px-1.5 py-0.5 rounded-md">{{ rxCount }} Bytes</span>
           </div>
           <button @click="clearReceive" title="清空" class="group flex items-center justify-center w-7 h-7 rounded hover:bg-white hover:shadow-sm text-[var(--text-sub)] hover:text-[var(--col-primary)] transition-all">
-            <svg class="w-4 h-4 broom-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L7.5 16.5"></path><path d="M19.5 4.5L16.5 7.5"></path><path d="M2 22L4.5 19.5"></path><path d="M9.5 12.5C7.5 14.5 6 15 5 16C4 17 3 17 3 17C3 18 4 19C5 20 5 20 5 20C5 20 6 20 7 19C8 18 8.5 16.5 10.5 14.5L18 7"></path></svg>
+            <svg class="w-4 h-4 broom-icon" :class="{ 'broom-clicked': isBroomClicked }" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L7.5 16.5"></path><path d="M19.5 4.5L16.5 7.5"></path><path d="M2 22L4.5 19.5"></path><path d="M9.5 12.5C7.5 14.5 6 15 5 16C4 17 3 17 3 17C3 18 4 19C5 20 5 20 5 20C5 20 6 20 7 19C8 18 8.5 16.5 10.5 14.5L18 7"></path></svg>
           </button>
         </div>
         <textarea ref="logWindowRef" readonly class="flex-1 w-full p-4 font-mono text-sm bg-transparent resize-none outline-none custom-scrollbar leading-relaxed text-[var(--text-main)]" :value="receivedData"></textarea>
@@ -578,5 +587,8 @@ const scrollToBottom = () => {
 }
 .group:hover .broom-icon {
   animation: broom-sweep 0.6s ease-in-out;
+}
+.broom-clicked {
+  animation: broom-sweep 0.6s ease-in-out !important;
 }
 </style>
