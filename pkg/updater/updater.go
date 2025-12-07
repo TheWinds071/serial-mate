@@ -168,8 +168,8 @@ func InstallUpdate(updateFile string) error {
 		return fmt.Errorf("failed to resolve symlinks: %w", err)
 	}
 
-	// On Windows, we need to rename the old exe and then copy the new one
-	// On Unix, we can directly replace the file
+	// For both Windows and Unix, we use copy + remove to handle cross-device moves
+	// (rename fails with "invalid cross-device link" when source and dest are on different filesystems)
 	if runtime.GOOS == "windows" {
 		// Rename old executable
 		oldPath := exePath + ".old"
@@ -194,15 +194,39 @@ func InstallUpdate(updateFile string) error {
 			_ = os.Remove(oldPath) // Ignore error - cleanup is best-effort
 		}()
 	} else {
-		// For Unix systems, make the update file executable
-		if err := os.Chmod(updateFile, 0755); err != nil {
-			return fmt.Errorf("failed to make update executable: %w", err)
+		// For Unix systems, use copy + remove instead of rename to handle cross-device moves
+		// Rename old executable as backup
+		oldPath := exePath + ".old"
+		if err := os.Rename(exePath, oldPath); err != nil {
+			return fmt.Errorf("failed to backup old executable: %w", err)
 		}
 
-		// Replace the current executable
-		if err := os.Rename(updateFile, exePath); err != nil {
-			return fmt.Errorf("failed to replace executable: %w", err)
+		// Copy new executable
+		if err := copyFile(updateFile, exePath); err != nil {
+			// Restore old executable on failure
+			if restoreErr := os.Rename(oldPath, exePath); restoreErr != nil {
+				return fmt.Errorf("failed to install update and restore failed: %w (restore error: %v)", err, restoreErr)
+			}
+			return fmt.Errorf("failed to install update: %w", err)
 		}
+
+		// Make the new executable have executable permissions
+		if err := os.Chmod(exePath, 0755); err != nil {
+			// Restore old executable on failure
+			if restoreErr := os.Rename(oldPath, exePath); restoreErr != nil {
+				return fmt.Errorf("failed to set executable permissions and restore failed: %w (restore error: %v)", err, restoreErr)
+			}
+			return fmt.Errorf("failed to set executable permissions: %w", err)
+		}
+
+		// Remove the temporary update file
+		_ = os.Remove(updateFile) // Best effort cleanup
+
+		// Clean up old executable in background
+		go func() {
+			time.Sleep(OldExeCleanupDelay)
+			_ = os.Remove(oldPath) // Ignore error - cleanup is best-effort
+		}()
 	}
 
 	return nil
