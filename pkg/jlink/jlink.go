@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"os"
 	"runtime"
+	"time"
 	"unsafe"
 
 	"github.com/ebitengine/purego"
@@ -53,10 +55,19 @@ func NewJLinkWrapper() (*JLinkWrapper, error) {
 		return nil, err
 	}
 
+	fmt.Printf("[JLink] 尝试加载驱动: %s\n", libPath)
+
 	// 加载动态库
 	lib, err := purego.Dlopen(libPath, purego.RTLD_NOW|purego.RTLD_GLOBAL)
 	if err != nil {
-		return nil, fmt.Errorf("加载 J-Link 驱动失败: %v", err)
+		// 尝试加载备用路径（如果是 Linux，可能在系统路径）
+		if runtime.GOOS == "linux" && libPath == "./libjlinkarm.so" {
+			fmt.Println("[JLink] 本地加载失败，尝试系统默认路径 /opt/SEGGER/JLink/libjlinkarm.so")
+			lib, err = purego.Dlopen("/opt/SEGGER/JLink/libjlinkarm.so", purego.RTLD_NOW|purego.RTLD_GLOBAL)
+		}
+		if err != nil {
+			return nil, fmt.Errorf("加载 J-Link 驱动失败: %v", err)
+		}
 	}
 
 	jl := &JLinkWrapper{libHandle: lib}
@@ -77,7 +88,7 @@ func NewJLinkWrapper() (*JLinkWrapper, error) {
 	register(&jl.apiReadMem, "JLINK_ReadMem")
 	register(&jl.apiWriteMem, "JLINK_WriteMem")
 
-	// 2. 尝试绑定原生 RTT 函数 (Linux 上可能没有)
+	// 2. 尝试绑定原生 RTT 函数 (Linux 上可能没有，或者版本较旧)
 	register(&jl.apiRTTStart, "JLINK_RTT_Start")
 	register(&jl.apiRTTRead, "JLINK_RTT_Read")
 	register(&jl.apiRTTWrite, "JLINK_RTT_Write")
@@ -92,6 +103,9 @@ func NewJLinkWrapper() (*JLinkWrapper, error) {
 
 // Connect 连接芯片
 func (jl *JLinkWrapper) Connect(chipName string, speed int, iface string) error {
+	if jl.apiOpen == nil {
+		return fmt.Errorf("J-Link API 未初始化")
+	}
 	jl.apiOpen()
 
 	// 设置接口
@@ -118,22 +132,40 @@ func (jl *JLinkWrapper) Connect(chipName string, speed int, iface string) error 
 		}
 	}
 
+	// --- [关键修复] ---
+	// Build 模式下程序运行极快，JLink 复位芯片后，芯片内部固件可能还没运行到初始化 RTT 控制块的代码。
+	// 如果立即扫描内存，读到的全是 0，导致“未找到控制块”错误。
+	// 这里强制等待 500ms (根据芯片启动速度可适当调整)
+	fmt.Println("[JLink] 连接成功，等待芯片稳定...")
+	time.Sleep(500 * time.Millisecond)
+
 	// 策略选择：如果原生 RTT API 存在则使用，否则使用软 RTT
+	// 注意：在 Linux 下，即使有 apiRTTStart 符号，有时也可能调用失败，建议优先尝试 SoftRTT 或者加更严格的判断
 	if jl.apiRTTStart != nil && jl.apiRTTRead != nil {
-		fmt.Println("[JLink] 使用原生驱动 RTT")
-		if ret := jl.apiRTTStart(); ret < 0 {
-			return fmt.Errorf("原生 RTT 启动失败")
+		fmt.Println("[JLink] 尝试启动原生驱动 RTT...")
+		// 尝试启动，如果返回值 < 0 则回退到 SoftRTT
+		if ret := jl.apiRTTStart(); ret >= 0 {
+			fmt.Println("[JLink] 原生 RTT 启动成功")
+			jl.useSoftRTT = false
+			return nil
 		}
-		jl.useSoftRTT = false
-	} else {
-		fmt.Println("[JLink] 原生 RTT 不可用，切换到内存轮询模式 (Soft RTT)")
-		if err := jl.initSoftRTT(); err != nil {
-			return fmt.Errorf("软 RTT 初始化失败: %v", err)
-		}
-		jl.useSoftRTT = true
+		fmt.Println("[JLink] 原生 RTT 启动返回错误，回退到 Soft RTT")
 	}
 
-	return nil
+	fmt.Println("[JLink] 原生 RTT 不可用或失败，切换到内存轮询模式 (Soft RTT)")
+
+	// 给 Soft RTT 初始化增加几次重试，防止芯片启动慢
+	var err error
+	for i := 0; i < 3; i++ {
+		if err = jl.initSoftRTT(); err == nil {
+			jl.useSoftRTT = true
+			return nil
+		}
+		fmt.Printf("[JLink] Soft RTT 初始化尝试 %d/3 失败，重试中...\n", i+1)
+		time.Sleep(500 * time.Millisecond)
+	}
+
+	return fmt.Errorf("软 RTT 初始化最终失败: %v", err)
 }
 
 // ReadRTT 统一读取接口
@@ -144,6 +176,7 @@ func (jl *JLinkWrapper) ReadRTT() ([]byte, error) {
 			return nil, nil
 		}
 		buf := make([]byte, 4096)
+		// 注意：某些版本的 .so 文件调用约定可能导致 panic，需注意
 		n := jl.apiRTTRead(0, uintptr(unsafe.Pointer(&buf[0])), uint32(len(buf)))
 		if n <= 0 {
 			return nil, nil
@@ -170,7 +203,8 @@ func (jl *JLinkWrapper) WriteRTT(data []byte) (int, error) {
 		return int(n), nil
 	} else {
 		// 内存轮询模式 (暂未实现写入，仅实现读取用于日志)
-		return 0, fmt.Errorf("Soft RTT Write not implemented yet")
+		// TODO: 实现 Soft RTT 写入逻辑 (需要读取 DownBuffer 描述符并写入内存)
+		return 0, nil
 	}
 }
 
@@ -185,18 +219,21 @@ func (jl *JLinkWrapper) Close() {
 
 func (jl *JLinkWrapper) initSoftRTT() error {
 	// 1. 搜索 _SEGGER_RTT 控制块
-	// 搜索范围：0x20000000 开始的 256KB (足以覆盖大多数 STM32 RAM)
+	// 搜索范围：0x20000000 开始的 64KB (通常够用了，范围太大会很慢)
+	// 如果你的芯片 RAM 起始地址不同（如 H7 系列），需要修改这里
 	searchStart := uint32(0x20000000)
-	searchSize := uint32(0x40000)
+	searchSize := uint32(0x10000) // 64KB
 
-	// 分块搜索，防止一次读取过大内存导致 JLink 报错
-	chunkSize := uint32(0x1000) // 4KB
+	// 分块搜索，防止一次读取过大内存导致 JLink 报错或超时
+	chunkSize := uint32(0x800) // 2KB 一块
 	memBuf := make([]byte, chunkSize)
 	signature := []byte("SEGGER RTT")
 
 	for offset := uint32(0); offset < searchSize; offset += chunkSize {
 		addr := searchStart + offset
+		// 读取内存
 		if jl.apiReadMem(addr, chunkSize, uintptr(unsafe.Pointer(&memBuf[0]))) < 0 {
+			// 读取失败可能是越界或保护，跳过
 			continue
 		}
 
@@ -207,19 +244,27 @@ func (jl *JLinkWrapper) initSoftRTT() error {
 			fmt.Printf("[JLink] RTT 控制块找到: 0x%08X\n", jl.rttControlBlk)
 
 			// 读取 Up Buffer 0 描述符 (Target -> Host)
-			// ID(16) + MaxUp(4) + MaxDown(4) + UpBuffer0(24)
-			// 偏移量 = 24
+			// 结构体偏移: ID(16 bytes) + MaxUpBuffers(4) + MaxDownBuffers(4)
+			// UpBuffer[0] 从偏移 24 开始
 			descAddr := jl.rttControlBlk + 16 + 4 + 4
 
-			descData := make([]byte, 24)
-			jl.apiReadMem(descAddr, 24, uintptr(unsafe.Pointer(&descData[0])))
+			descData := make([]byte, 24) // sizeof(SEGGER_RTT_BUFFER_UP)
+			if jl.apiReadMem(descAddr, 24, uintptr(unsafe.Pointer(&descData[0]))) < 0 {
+				return fmt.Errorf("读取 RTT 描述符失败")
+			}
 
 			jl.rttUpBuffer = parseBufferDesc(descData)
 			fmt.Printf("[JLink] UpBuffer0: Addr=0x%X Size=%d\n", jl.rttUpBuffer.BufferPtr, jl.rttUpBuffer.Size)
+
+			// 简单校验一下 Buffer 地址是否合法 (防止误识别)
+			if jl.rttUpBuffer.BufferPtr < 0x20000000 || jl.rttUpBuffer.Size > 0x100000 {
+				fmt.Println("[JLink] 警告: RTT Buffer 地址看起来不正常，可能识别错误")
+			}
+
 			return nil
 		}
 	}
-	return fmt.Errorf("未在 RAM 中找到 SEGGER RTT 控制块")
+	return fmt.Errorf("未在 RAM (0x%X - 0x%X) 中找到 SEGGER RTT 控制块", searchStart, searchStart+searchSize)
 }
 
 func (jl *JLinkWrapper) readSoftRTT() ([]byte, error) {
@@ -234,14 +279,18 @@ func (jl *JLinkWrapper) readSoftRTT() ([]byte, error) {
 	// 所以 WrOff 的绝对地址 = ControlBlock + 24 + 12 = ControlBlock + 36
 	wrOffAddr := jl.rttControlBlk + 24 + 12
 	var wrOff uint32
-	jl.apiReadMem(wrOffAddr, 4, uintptr(unsafe.Pointer(&wrOff)))
+	if jl.apiReadMem(wrOffAddr, 4, uintptr(unsafe.Pointer(&wrOff))) < 0 {
+		return nil, nil // 读取失败忽略
+	}
 
 	// 读取 RdOff (Host 读指针)
 	// RdOff 偏移 = 16
 	// 绝对地址 = ControlBlock + 24 + 16 = ControlBlock + 40
 	rdOffAddr := jl.rttControlBlk + 24 + 16
 	var rdOff uint32
-	jl.apiReadMem(rdOffAddr, 4, uintptr(unsafe.Pointer(&rdOff)))
+	if jl.apiReadMem(rdOffAddr, 4, uintptr(unsafe.Pointer(&rdOff))) < 0 {
+		return nil, nil
+	}
 
 	if wrOff == rdOff {
 		return nil, nil // 无数据
@@ -303,11 +352,22 @@ func parseBufferDesc(data []byte) RTTBufferDesc {
 func getLibraryPath() (string, error) {
 	switch runtime.GOOS {
 	case "windows":
-		return "JLink_x64.dll", nil
+		// 尝试当前目录
+		if _, err := os.Stat("JLink_x64.dll"); err == nil {
+			return "JLink_x64.dll", nil
+		}
+		return "JLink_x64.dll", nil // 让系统去搜
 	case "linux":
-		// Arch Linux 默认路径
+		// [修改] 优先查找当前目录下的 libjlinkarm.so (解决 Build 后找不到库的问题)
+		if _, err := os.Stat("./libjlinkarm.so"); err == nil {
+			return "./libjlinkarm.so", nil
+		}
+		// Arch Linux / Ubuntu 默认安装路径
 		return "/opt/SEGGER/JLink/libjlinkarm.so", nil
 	case "darwin":
+		if _, err := os.Stat("libjlinkarm.dylib"); err == nil {
+			return "libjlinkarm.dylib", nil
+		}
 		return "/Applications/SEGGER/JLink/libjlinkarm.dylib", nil
 	default:
 		return "", fmt.Errorf("不支持的操作系统: %s", runtime.GOOS)
