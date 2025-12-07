@@ -418,7 +418,7 @@ const scrollToBottom = () => {
         </div>
 
         <!-- 设置面板主体 -->
-        <div class="bg-white/40 p-3 rounded-lg shadow-sm border border-black/5 space-y-3 overflow-hidden">
+        <div class="bg-white/40 p-3 rounded-lg shadow-sm border border-black/5 space-y-3 overflow-visible">
           <div class="text-xs font-bold text-[var(--text-sub)] opacity-70 uppercase tracking-wider mb-1 flex justify-between items-center">
             <span>{{ mode.replace('_', ' ') }} Settings</span>
             <span v-if="mode !== 'SERIAL' && mode !== 'JLINK' && mode !== 'TCP_CLIENT'" class="text-[10px] bg-[var(--col-primary)] text-white px-1.5 py-0.5 rounded-full">More</span>
