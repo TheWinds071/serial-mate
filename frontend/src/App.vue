@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, nextTick, watch, computed, reactive } from 'vue';
+import { ref, onMounted, onUnmounted, nextTick, watch, computed, reactive } from 'vue';
 // 引入后端方法 (新增 OpenJLink)
 import { GetSerialPorts, OpenSerial, OpenTcpClient, OpenTcpServer, OpenUdp, OpenJLink, Close as CloseConnection, SendData } from '../wailsjs/go/main/App';
 import { EventsOn } from '../wailsjs/runtime/runtime';
@@ -180,6 +180,14 @@ onMounted(async () => {
   });
 });
 
+// 清理定时器防止内存泄漏
+onUnmounted(() => {
+  if (broomAnimationTimer) {
+    clearTimeout(broomAnimationTimer);
+    broomAnimationTimer = null;
+  }
+});
+
 const base64ToBytes = (base64: string): number[] => {
   const binaryString = window.atob(base64);
   const len = binaryString.length;
@@ -266,16 +274,23 @@ const handleSend = async () => {
 // 清空接收数据时的动画状态
 const BROOM_ANIMATION_DURATION = 600; // ms, 与 CSS 动画时长保持一致
 const isBroomClicked = ref(false);
+let broomAnimationTimer: ReturnType<typeof setTimeout> | null = null;
 
 const clearReceive = () => {
   receivedData.value = '';
   rawDataBuffer.value = [];
   rxCount.value = 0;
   
+  // 清除之前的定时器（如果存在）
+  if (broomAnimationTimer) {
+    clearTimeout(broomAnimationTimer);
+  }
+  
   // 触发清扫动画
   isBroomClicked.value = true;
-  setTimeout(() => {
+  broomAnimationTimer = setTimeout(() => {
     isBroomClicked.value = false;
+    broomAnimationTimer = null;
   }, BROOM_ANIMATION_DURATION);
 };
 
