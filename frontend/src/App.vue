@@ -264,6 +264,7 @@ const handleSend = async () => {
 };
 
 // 清空接收数据时的动画状态
+const BROOM_ANIMATION_DURATION = 600; // ms, 与 CSS 动画时长保持一致
 const isBroomClicked = ref(false);
 
 const clearReceive = () => {
@@ -275,7 +276,7 @@ const clearReceive = () => {
   isBroomClicked.value = true;
   setTimeout(() => {
     isBroomClicked.value = false;
-  }, 600);
+  }, BROOM_ANIMATION_DURATION);
 };
 
 const decoder = new TextDecoder('utf-8');
@@ -588,7 +589,7 @@ const scrollToBottom = () => {
 .group:hover .broom-icon {
   animation: broom-sweep 0.6s ease-in-out;
 }
-.broom-clicked {
-  animation: broom-sweep 0.6s ease-in-out !important;
+.broom-icon.broom-clicked {
+  animation: broom-sweep 0.6s ease-in-out;
 }
 </style>
