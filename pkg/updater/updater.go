@@ -186,10 +186,12 @@ func InstallUpdate(updateFile string) error {
 			return fmt.Errorf("failed to install update: %w", err)
 		}
 
-		// Clean up old executable in background (ignore errors)
+		// Clean up old executable in background
+		// Note: We ignore cleanup errors as they don't affect functionality
+		// The old file is just a backup and can be removed manually if needed
 		go func() {
 			time.Sleep(OldExeCleanupDelay)
-			os.Remove(oldPath)
+			_ = os.Remove(oldPath) // Ignore error - cleanup is best-effort
 		}()
 	} else {
 		// For Unix systems, make the update file executable
@@ -222,6 +224,7 @@ func getAssetName() string {
 
 // compareVersions compares two version strings (v1.2.3 format)
 // Returns: -1 if v1 < v2, 0 if v1 == v2, 1 if v1 > v2
+// Note: Invalid version parts are treated as 0 for comparison purposes
 func compareVersions(v1, v2 string) int {
 	// Remove 'v' prefix if present
 	v1 = strings.TrimPrefix(v1, "v")
@@ -264,7 +267,7 @@ func compareVersions(v1, v2 string) int {
 	return 0
 }
 
-// copyFile copies a file from src to dst
+// copyFile copies a file from src to dst with secure permissions
 func copyFile(src, dst string) error {
 	sourceFile, err := os.Open(src)
 	if err != nil {
@@ -272,7 +275,8 @@ func copyFile(src, dst string) error {
 	}
 	defer sourceFile.Close()
 
-	destFile, err := os.Create(dst)
+	// Create destination file with secure permissions (owner read/write, group/other read)
+	destFile, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
 	if err != nil {
 		return err
 	}
