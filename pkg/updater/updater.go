@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -179,7 +180,9 @@ func InstallUpdate(updateFile string) error {
 		// Copy new executable
 		if err := copyFile(updateFile, exePath); err != nil {
 			// Restore old executable on failure
-			os.Rename(oldPath, exePath)
+			if restoreErr := os.Rename(oldPath, exePath); restoreErr != nil {
+				return fmt.Errorf("failed to install update and restore failed: %w (restore error: %v)", err, restoreErr)
+			}
 			return fmt.Errorf("failed to install update: %w", err)
 		}
 
@@ -241,10 +244,14 @@ func compareVersions(v1, v2 string) int {
 	}
 
 	for i := 0; i < maxLen; i++ {
-		var n1, n2 int
-		// Parse version parts, ignoring errors (defaults to 0 for invalid parts)
-		_, _ = fmt.Sscanf(parts1[i], "%d", &n1)
-		_, _ = fmt.Sscanf(parts2[i], "%d", &n2)
+		n1, err1 := strconv.Atoi(parts1[i])
+		if err1 != nil {
+			n1 = 0 // Treat invalid parts as 0
+		}
+		n2, err2 := strconv.Atoi(parts2[i])
+		if err2 != nil {
+			n2 = 0 // Treat invalid parts as 0
+		}
 
 		if n1 < n2 {
 			return -1
