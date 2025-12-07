@@ -1,6 +1,7 @@
 package jlink
 
 import (
+	"os"
 	"runtime"
 	"testing"
 )
@@ -16,21 +17,38 @@ func TestGetLibraryPath(t *testing.T) {
 		t.Fatal("getLibraryPath() returned empty path")
 	}
 
-	// Verify platform-specific paths
+	// Verify platform-specific paths match the logic in getLibraryPath()
 	switch runtime.GOOS {
 	case "windows":
+		// Windows always returns "JLink_x64.dll"
 		if path != "JLink_x64.dll" {
 			t.Errorf("Expected 'JLink_x64.dll' for Windows, got '%s'", path)
 		}
 	case "linux":
-		// Can be either local or system path
-		if path != "./libjlinkarm.so" && path != "/opt/SEGGER/JLink/libjlinkarm.so" {
-			t.Errorf("Unexpected path for Linux: '%s'", path)
+		// Linux returns local path if it exists, otherwise system path
+		localPath := "./libjlinkarm.so"
+		systemPath := "/opt/SEGGER/JLink/libjlinkarm.so"
+		if _, err := os.Stat(localPath); err == nil {
+			if path != localPath {
+				t.Errorf("Expected '%s' for Linux (local file exists), got '%s'", localPath, path)
+			}
+		} else {
+			if path != systemPath {
+				t.Errorf("Expected '%s' for Linux (local file doesn't exist), got '%s'", systemPath, path)
+			}
 		}
 	case "darwin":
-		// Can be either local or system path
-		if path != "libjlinkarm.dylib" && path != "/Applications/SEGGER/JLink/libjlinkarm.dylib" {
-			t.Errorf("Unexpected path for macOS: '%s'", path)
+		// macOS returns local path if it exists, otherwise system path
+		localPath := "libjlinkarm.dylib"
+		systemPath := "/Applications/SEGGER/JLink/libjlinkarm.dylib"
+		if _, err := os.Stat(localPath); err == nil {
+			if path != localPath {
+				t.Errorf("Expected '%s' for macOS (local file exists), got '%s'", localPath, path)
+			}
+		} else {
+			if path != systemPath {
+				t.Errorf("Expected '%s' for macOS (local file doesn't exist), got '%s'", systemPath, path)
+			}
 		}
 	}
 }
