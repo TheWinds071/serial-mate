@@ -3,6 +3,11 @@ import { ref, onMounted, onUnmounted, nextTick, watch, computed, reactive } from
 // 引入后端方法 (新增 OpenJLink, GetVersion, CheckForUpdates, DownloadAndInstallUpdate, QuitApp)
 import { GetSerialPorts, OpenSerial, OpenTcpClient, OpenTcpServer, OpenUdp, OpenJLink, Close as CloseConnection, SendData, GetVersion, CheckForUpdates, DownloadAndInstallUpdate, QuitApp } from '../wailsjs/go/main/App';
 import { EventsOn } from '../wailsjs/runtime/runtime';
+import { shallowRef } from 'vue';
+
+// 设置最大缓存大小，例如 500KB 或 1MB
+// 这里的 buffer 是字节数，receivedData 是字符数
+const MAX_BUFFER_SIZE = 1024 * 1024;
 
 // --- 1. 核心状态 ---
 const portList = ref<string[]>([]);
@@ -47,7 +52,13 @@ const jlinkInterface = ref('SWD');
 
 // --- 2. 数据处理 ---
 const receivedData = ref<string>('');
-const rawDataBuffer = ref<number[]>([]);
+// 使用 shallowRef，这样 Vue 不会深度监听数组内部的每一个数字
+const rawDataBuffer = shallowRef<number[]>([]);
+
+// 注意：使用 shallowRef 后，push 不会触发视图更新，
+// 但因为你的 rawDataBuffer 主要是给 watch(showHex) 用的，
+// 而 receivedData 才是直接绑定的视图，所以这通常没问题。
+// 如果必须触发更新，赋值操作 rawDataBuffer.value = ... 会触发。
 const sendInput = ref('');
 // 默认关闭 Hex 显示
 const showHex = ref(false);
@@ -235,9 +246,29 @@ onMounted(async () => {
     }
 
     if (bytes && bytes.length > 0) {
+      // --- 修复开始：限制内存增长 ---
+
+      // 1. 更新 rawDataBuffer (使用非响应式操作优化性能)
+      // 如果不想丢失历史 Hex 切换能力，需要限制大小；如果不需要回看太久，建议直接截断
       rawDataBuffer.value.push(...bytes);
+      if (rawDataBuffer.value.length > MAX_BUFFER_SIZE) {
+        // 删除头部多余的数据，保持数组大小在限制范围内
+        const overflow = rawDataBuffer.value.length - MAX_BUFFER_SIZE;
+        rawDataBuffer.value.splice(0, overflow);
+      }
+
+      // 2. 更新 receivedData (显示文本)
+      const newData = formatData(bytes, showHex.value);
+      receivedData.value += newData;
+
+      // 如果文本过长，从头部截断
+      if (receivedData.value.length > MAX_BUFFER_SIZE) {
+        receivedData.value = receivedData.value.slice(receivedData.value.length - MAX_BUFFER_SIZE);
+      }
+
+      // --- 修复结束 ---
+
       rxCount.value += bytes.length;
-      receivedData.value += formatData(bytes, showHex.value);
       scrollToBottom();
     }
   });
