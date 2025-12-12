@@ -201,10 +201,10 @@ func (a *App) jlinkReadLoop() {
 			data, err := jl.ReadRTT()
 			if err != nil {
 				consecutiveErrors++
-				
+
 				// 检测是否是偏移量错误（STM32 复位导致）
 				errMsg := err.Error()
-				if consecutiveErrors == 1 && (strings.Contains(errMsg, "offset out of bounds") || 
+				if consecutiveErrors == 1 && (strings.Contains(errMsg, "offset out of bounds") ||
 					strings.Contains(errMsg, "偏移量超出范围")) {
 					runtime.EventsEmit(a.ctx, "sys-msg", "[RTT] 检测到目标设备可能已复位，尝试重新连接...")
 					// 尝试重新初始化 RTT
@@ -216,7 +216,7 @@ func (a *App) jlinkReadLoop() {
 						runtime.EventsEmit(a.ctx, "sys-msg", fmt.Sprintf("[RTT] RTT 重新初始化失败: %v", reinitErr))
 					}
 				}
-				
+
 				// 增加容错机制：只有连续多次错误才关闭连接
 				// 这样可以避免偶发错误导致断连，同时确保持续错误时能及时断开
 				if consecutiveErrors >= maxConsecutiveErrors {
@@ -586,7 +586,7 @@ func (a *App) DownloadAndInstallUpdate(downloadURL string) error {
 func (a *App) QuitApp() {
 	// Close all connections first
 	a.Close()
-	
+
 	// Quit the application
 	runtime.Quit(a.ctx)
 }
