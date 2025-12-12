@@ -352,6 +352,15 @@ func parseBufferDesc(data []byte) RTTBufferDesc {
 	}
 }
 
+// ReinitSoftRTT attempts to reinitialize software RTT (used to recover connection after STM32 reset)
+func (jl *JLinkWrapper) ReinitSoftRTT() error {
+	if !jl.useSoftRTT {
+		return fmt.Errorf("not using soft RTT")
+	}
+	jl.log("[RTT] 检测到偏移量异常，尝试重新初始化 RTT...")
+	return jl.initSoftRTT()
+}
+
 // getLibraryPath 跨平台路径选择
 func getLibraryPath() (string, error) {
 	switch runtime.GOOS {
