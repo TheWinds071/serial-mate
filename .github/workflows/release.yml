@@ -74,9 +74,9 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev
 
-      # 执行构建 (已修复：移除了 -buildmode production，增加了 -clean)
-      # Note: 不使用 -tags webkit2gtk_4_1 因为 Wails v2.11.0 该标签存在 pkg-config 路径问题
-      # Wails 会自动检测系统安装的 webkit2gtk 版本
+      # Build Application
+      # Note: Removed -tags webkit2gtk_4_1 due to pkg-config path issues in Wails v2.11.0
+      # Wails will automatically detect the installed webkit2gtk version
       - name: Build Application
         shell: bash
         run: |
@@ -180,9 +180,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # Fedora 40 uses webkit2gtk 4.0 (older stable version)
           - fedora_version: 40
             webkit_package: webkit2gtk4.0-devel
             nfpm_config: linux-webkit40.yaml
+          # Fedora 41 uses webkit2gtk 4.1 (newer version with updated API)
           - fedora_version: 41
             webkit_package: webkit2gtk4.1-devel
             nfpm_config: linux-webkit41.yaml
