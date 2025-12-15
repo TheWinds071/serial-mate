@@ -1,0 +1,75 @@
+name: Test Build
+
+on:
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  test-makefile:
+    name: Test Makefile on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, ubuntu-24.04]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+          check-latest: true
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Linux Dependencies (webkit 4.0)
+        if: matrix.os == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.0-dev
+
+      - name: Install Linux Dependencies (webkit 4.1)
+        if: matrix.os == 'ubuntu-24.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev
+
+      - name: Test Makefile help
+        run: make help
+
+      - name: Test Makefile check-deps
+        run: make check-deps
+
+      - name: Test Makefile install-deps
+        run: make install-deps
+
+      - name: Test Makefile version
+        run: make version
+
+      - name: Test Makefile build-linux
+        run: make build-linux
+
+      - name: Verify binary exists
+        run: |
+          test -f build/bin/serial-mate
+          echo "Binary exists and is executable"
+          file build/bin/serial-mate
+
+      - name: Test package-aur
+        run: make package-aur
+
+      - name: Verify AUR files
+        run: |
+          test -f dist/aur/PKGBUILD
+          test -f dist/aur/PKGBUILD-git
+          echo "AUR package files created successfully"
+
+      - name: Test clean
+        run: make clean
