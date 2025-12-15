@@ -104,17 +104,40 @@ jobs:
           VERSION=${GITHUB_REF#refs/tags/v}
           export VERSION
           
-          # Create .deb package
-          nfpm package --packager deb --config packaging/nfpm/${{ matrix.nfpm_config }} --target .
+          # Create .deb package using Makefile
+          mkdir -p dist
+          VERSION=$VERSION nfpm package --packager deb --config packaging/nfpm/${{ matrix.nfpm_config }} --target dist/
           
           # Rename with version and distro
-          mv serial-mate_${VERSION}_amd64.deb serial-mate-${VERSION}-${{ matrix.distro }}-amd64.deb
+          mv dist/serial-mate_${VERSION}_amd64.deb serial-mate-${VERSION}-${{ matrix.distro }}-amd64.deb
 
       - name: Prepare Linux Binary Asset
         if: matrix.distro != ''
         run: |
           cd build/bin
           mv ${{ matrix.artifact_name }} ../../${{ matrix.asset_name }}
+      
+      # Generate AUR package files (only for Ubuntu 24.04 build)
+      - name: Prepare AUR Package
+        if: matrix.distro == 'ubuntu-24.04'
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          mkdir -p dist/aur
+          cp packaging/aur/PKGBUILD dist/aur/
+          cp packaging/aur/PKGBUILD-git dist/aur/
+          sed -i "s/pkgver=.*/pkgver=${VERSION}/" dist/aur/PKGBUILD
+          
+          # Calculate SHA256 for source tarball
+          wget -q "https://github.com/TheWinds071/serial-mate/archive/v${VERSION}.tar.gz" -O "/tmp/serial-mate-${VERSION}.tar.gz"
+          SHA256SUM=$(sha256sum "/tmp/serial-mate-${VERSION}.tar.gz" | awk '{print $1}')
+          sed -i "s/sha256sums=.*/sha256sums=('${SHA256SUM}')/" dist/aur/PKGBUILD
+          
+          # Create archive for AUR files
+          cd dist/aur
+          tar -czf ../serial-mate-aur-${VERSION}.tar.gz PKGBUILD PKGBUILD-git
+          cd ../..
+          
+          echo "AUR package files prepared for version ${VERSION}"
 
       # 处理 macOS 产物 (打包 .app)
       - name: Prepare macOS Asset
@@ -165,6 +188,7 @@ jobs:
             ${{ matrix.asset_name }}
             *.deb
             *.rpm
+            dist/*.tar.gz
           draft: false
           prerelease: false
           # 关键修改：关闭自动生成，使用上面生成的 body
@@ -232,11 +256,12 @@ jobs:
           VERSION=${GITHUB_REF#refs/tags/v}
           export VERSION
           
-          # Create .rpm package
-          nfpm package --packager rpm --config packaging/nfpm/${{ matrix.nfpm_config }} --target .
+          # Create .rpm package using Makefile structure
+          mkdir -p dist
+          VERSION=$VERSION nfpm package --packager rpm --config packaging/nfpm/${{ matrix.nfpm_config }} --target dist/
           
           # Rename with version and distro
-          mv serial-mate-${VERSION}.x86_64.rpm serial-mate-${VERSION}-fedora${{ matrix.fedora_version }}-amd64.rpm
+          mv dist/serial-mate-${VERSION}.x86_64.rpm serial-mate-${VERSION}-fedora${{ matrix.fedora_version }}-amd64.rpm
 
       - name: Upload RPM to Release
         uses: softprops/action-gh-release@v1

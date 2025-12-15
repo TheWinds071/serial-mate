@@ -94,6 +94,21 @@ sudo apt-get install -f
 sudo dnf install https://github.com/TheWinds071/serial-mate/releases/download/vX.X.X/serial-mate-X.X.X-fedora40-amd64.rpm
 ```
 
+**Arch Linux:**
+
+```bash
+# 使用 AUR 助手安装 (推荐)
+yay -S serial-mate
+
+# 或者手动从 AUR 安装
+git clone https://aur.archlinux.org/serial-mate.git
+cd serial-mate
+makepkg -si
+
+# 开发版本 (从 git 主分支构建)
+yay -S serial-mate-git
+```
+
 安装后，可以从应用菜单启动 Serial Mate，或在终端运行：
 
 ```bash
@@ -125,4 +140,72 @@ sudo dnf install gtk3 webkit2gtk4.1
 
 # Arch Linux
 sudo pacman -S gtk3 webkit2gtk
-``` 
+```
+
+## 🔨 从源码构建 (Build from Source)
+
+想要从源码构建 Serial Mate？我们提供了完整的构建脚本和文档。
+
+### 快速开始
+
+```bash
+# 克隆仓库
+git clone https://github.com/TheWinds071/serial-mate.git
+cd serial-mate
+
+# 检查依赖
+make check-deps
+
+# 安装 Wails CLI (如果尚未安装)
+make install-deps
+
+# 构建应用
+make build
+
+# 开发模式 (热重载)
+make dev
+```
+
+### 构建特定平台
+
+```bash
+# Linux
+make build-linux
+
+# Windows
+make build-windows
+
+# macOS
+make build-darwin
+```
+
+### 创建安装包
+
+```bash
+# Debian 包 (.deb)
+make package-deb
+
+# RPM 包 (.rpm)
+make package-rpm
+
+# AUR 包文件
+make package-aur
+
+# Windows 可执行文件
+make package-windows
+
+# macOS 应用包
+make package-macos
+```
+
+更多详细信息请参阅 [BUILDING.md](BUILDING.md)。
+
+### 可用的 Make 命令
+
+运行 `make help` 查看所有可用命令：
+- `make build` - 构建当前平台
+- `make dev` - 开发模式
+- `make test` - 运行测试
+- `make clean` - 清理构建产物
+- `make install` - 安装到本地系统 (仅 Linux)
+- `make package-*` - 创建各种平台的安装包 

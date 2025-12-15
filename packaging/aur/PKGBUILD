@@ -1,0 +1,51 @@
+# Maintainer: TheWinds071 <thewinds071@example.com>
+
+pkgname=serial-mate
+pkgver=0.0.0
+pkgrel=1
+pkgdesc="Modern serial port debugging tool built with Wails v2 and Vue 3"
+arch=('x86_64')
+url="https://github.com/TheWinds071/serial-mate"
+license=('GPL3')
+depends=('gtk3' 'webkit2gtk')
+makedepends=('go>=1.21' 'nodejs>=20' 'npm')
+source=("${pkgname}-${pkgver}.tar.gz::https://github.com/TheWinds071/${pkgname}/archive/v${pkgver}.tar.gz")
+sha256sums=('SKIP')
+
+prepare() {
+    cd "${srcdir}/${pkgname}-${pkgver}"
+    
+    # Install Wails
+    export GOPATH="${srcdir}/go"
+    export PATH="${GOPATH}/bin:${PATH}"
+    go install github.com/wailsapp/wails/v2/cmd/wails@latest
+}
+
+build() {
+    cd "${srcdir}/${pkgname}-${pkgver}"
+    
+    export GOPATH="${srcdir}/go"
+    export PATH="${GOPATH}/bin:${PATH}"
+    export CGO_ENABLED=1
+    
+    # Build with Wails
+    wails build -platform linux/amd64 -clean -skipbindings
+}
+
+package() {
+    cd "${srcdir}/${pkgname}-${pkgver}"
+    
+    # Install binary
+    install -Dm755 "build/bin/${pkgname}" "${pkgdir}/usr/bin/${pkgname}"
+    
+    # Install desktop file
+    install -Dm644 "packaging/linux/${pkgname}.desktop" \
+        "${pkgdir}/usr/share/applications/${pkgname}.desktop"
+    
+    # Install icon
+    install -Dm644 "build/appicon.png" \
+        "${pkgdir}/usr/share/icons/hicolor/512x512/apps/${pkgname}.png"
+    
+    # Install README
+    install -Dm644 "README.md" "${pkgdir}/usr/share/doc/${pkgname}/README.md"
+}
