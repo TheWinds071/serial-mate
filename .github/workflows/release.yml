@@ -128,9 +128,11 @@ jobs:
           sed -i "s/pkgver=.*/pkgver=${VERSION}/" dist/aur/PKGBUILD
           
           # Calculate SHA256 for source tarball
-          wget -q "https://github.com/TheWinds071/serial-mate/archive/v${VERSION}.tar.gz" -O "/tmp/serial-mate-${VERSION}.tar.gz"
-          SHA256SUM=$(sha256sum "/tmp/serial-mate-${VERSION}.tar.gz" | awk '{print $1}')
+          TEMP_FILE="${RUNNER_TEMP}/serial-mate-${VERSION}.tar.gz"
+          wget -q "https://github.com/TheWinds071/serial-mate/archive/v${VERSION}.tar.gz" -O "$TEMP_FILE"
+          SHA256SUM=$(sha256sum "$TEMP_FILE" | awk '{print $1}')
           sed -i "s/sha256sums=.*/sha256sums=('${SHA256SUM}')/" dist/aur/PKGBUILD
+          rm "$TEMP_FILE"
           
           # Create archive for AUR files
           cd dist/aur

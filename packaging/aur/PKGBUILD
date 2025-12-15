@@ -1,4 +1,8 @@
-# Maintainer: TheWinds071 <thewinds071@example.com>
+# Maintainer: TheWinds071
+# NOTE: This is a template PKGBUILD. Before publishing to AUR:
+# 1. Update pkgver to the actual release version
+# 2. Calculate and update sha256sums using: makepkg -g
+# 3. Generate .SRCINFO using: makepkg --printsrcinfo > .SRCINFO
 
 pkgname=serial-mate
 pkgver=0.0.0
@@ -10,7 +14,7 @@ license=('GPL3')
 depends=('gtk3' 'webkit2gtk')
 makedepends=('go>=1.21' 'nodejs>=20' 'npm')
 source=("${pkgname}-${pkgver}.tar.gz::https://github.com/TheWinds071/${pkgname}/archive/v${pkgver}.tar.gz")
-sha256sums=('SKIP')
+sha256sums=('SKIP')  # Replace with actual checksum before publishing
 
 prepare() {
     cd "${srcdir}/${pkgname}-${pkgver}"
