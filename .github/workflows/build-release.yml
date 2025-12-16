@@ -37,13 +37,15 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: '0'
-          # 已删除错误的 safe-directory 参数
 
       - name: Fix Git Safe Directory
         run: git config --global --add safe.directory $(pwd)
 
       - name: Install Wails
-        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+        run: |
+          go install github.com/wailsapp/wails/v2/cmd/wails@latest
+          # 关键修复：动态获取 GOPATH 并添加到系统 PATH，供后续步骤使用
+          echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
 
       - name: Build Frontend
         run: |
@@ -57,8 +59,7 @@ jobs:
           GOOS: linux
           GOARCH: amd64
         run: |
-          export PATH=$PATH:/root/go/bin
-          # 修复点：添加 -tags webkit2_41 以支持 WebKitGTK 4.1
+          # 修复：直接使用 wails 命令（依赖上面的 GITHUB_PATH 设置）
           wails build -platform linux/amd64 -clean -tags webkit2_41
           mkdir -p dist
           cp build/bin/serial-mate dist/serial-mate
@@ -87,16 +88,17 @@ jobs:
       - name: Install nfpm
         run: |
           go install github.com/goreleaser/nfpm/v2/cmd/nfpm@latest
+          # nfpm 也会被安装到 GOPATH/bin，因为上面已经加了 PATH，这里不需要额外操作
 
       - name: Generate Fedora RPM
         env:
           NFPM_VERSION: ${{ steps.version.outputs.version }}
           NFPM_ARCH: amd64
         run: |
-          export PATH=$PATH:/root/go/bin
           mkdir -p dist/packages
           
-          /root/go/bin/nfpm package \
+          # 修复：直接使用 nfpm 命令
+          nfpm package \
             --config packaging/nfpm-fedora-rpm.yaml \
             --packager rpm \
             --target dist/packages/serial-mate-${{ steps.version.outputs.version }}-1.fc40.amd64.rpm
@@ -144,7 +146,7 @@ jobs:
 
       - name: Build Go Binary
         run: |
-          # 修复点：添加 -tags webkit2_41 以支持 WebKitGTK 4.1
+          # 这里的 actions/setup-go 会自动处理 PATH，但我们加上 -tags webkit2_41
           wails build -platform linux/amd64 -clean -tags webkit2_41
           mkdir -p dist
           cp build/bin/serial-mate dist/serial-mate
@@ -167,7 +169,7 @@ jobs:
           NFPM_VERSION: ${{ steps.version.outputs.version }}
           NFPM_ARCH: amd64
         run: |
-          # 确保能找到 GOPATH/bin 下的 nfpm
+          # 显式添加 PATH 以防万一
           export PATH=$PATH:$(go env GOPATH)/bin
           mkdir -p dist/packages
           
@@ -219,7 +221,6 @@ jobs:
 
       - name: Build Go Binary
         run: |
-          # Ubuntu 22.04 默认使用 WebKit 4.0，不需要额外 tag
           wails build -platform linux/amd64 -clean
           mkdir -p dist
           cp build/bin/serial-mate dist/serial-mate
