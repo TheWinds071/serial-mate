@@ -25,9 +25,6 @@ jobs:
           - arch: amd64
             go_arch: amd64
             nfpm_arch: amd64
-          - arch: arm64
-            go_arch: arm64
-            nfpm_arch: arm64
 
     steps:
       - name: Checkout code
