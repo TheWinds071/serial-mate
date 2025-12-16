@@ -217,7 +217,7 @@ sudo apt-get install -f
 
 **RHEL/Fedora/CentOS:**
 ```bash
-sudo dnf install libgtk-3-0 libwebkit2gtk-4.0-37
+sudo dnf install gtk3 webkit2gtk4.0
 ```
 
 ### Desktop Entry Not Showing
