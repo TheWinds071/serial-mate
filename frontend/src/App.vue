@@ -691,7 +691,7 @@ const scrollToBottom = () => {
 </script>
 
 <template>
-  <div :style="cssVars as any" class="flex h-screen w-screen bg-[var(--bg-main)] text-[var(--text-main)] font-sans overflow-hidden select-none transition-colors duration-300">
+  <div :style="cssVars as any" class="app-shell flex h-screen w-screen bg-[var(--bg-main)] text-[var(--text-main)] font-sans overflow-hidden select-none transition-colors duration-300">
 
     <!-- 侧边栏 -->
     <div class="w-72 bg-[var(--bg-side)] flex flex-col shrink-0 border-r border-black/5 transition-colors duration-300 relative">
@@ -1182,6 +1182,26 @@ const scrollToBottom = () => {
 </template>
 
 <style scoped>
+.app-shell {
+  position: relative;
+}
+
+.app-shell::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 26px;
+  background: linear-gradient(
+    to bottom,
+    var(--bg-side),
+    rgba(255, 255, 255, 0)
+  );
+  opacity: 0.4;
+  pointer-events: none;
+  z-index: 5;
+}
 .control-group { display: flex; align-items: center; gap: 0.5rem; }
 .control-group label { width: 60px; text-align: right; font-size: 0.75rem; color: var(--text-sub); }
 .morandi-input { width: 100%; background-color: rgba(255, 255, 255, 0.6); border: 1px solid rgba(0, 0, 0, 0.1); color: var(--text-main); padding: 0.25rem 0.5rem; font-size: 0.8rem; border-radius: 0.375rem; outline: none; transition: all 0.2s; }
